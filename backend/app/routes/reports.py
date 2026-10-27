@@ -31,3 +31,19 @@ def my_report(m: models.Membership = Depends(current_membership), db: Session = 
         "risks": flags,
         "next_steps": NEXT_STEPS.get(m.job_role, NEXT_STEPS["manager"]),
     }
+@router.delete("/me")
+def delete_my_diagnostic(
+    m: models.Membership = Depends(current_membership),
+    db: Session = Depends(get_db),
+):
+    deleted = (
+        db.query(models.Response)
+        .filter_by(membership_id=m.id)
+        .delete(synchronize_session=False)
+    )
+
+    db.commit()
+
+    return {
+        "deleted": deleted
+    }

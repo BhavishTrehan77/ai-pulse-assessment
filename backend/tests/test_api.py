@@ -128,3 +128,105 @@ def test_large_department_is_visible(client):
     assert sales_data["responded"] == 5
     assert sales_data["average_score"] == 3.33
     assert ["test_risk", 4] in body["top_risks"]
+def test_employee_can_delete_their_diagnostic_data(client):
+    headers, _ = login(
+        client,
+        "priya@northwind.test",
+        "Northwind Logistics",
+    )
+
+    # Priya starts with diagnostic responses.
+    report = client.get("/reports/me", headers=headers)
+    assert report.status_code == 200
+    assert report.json()["answered"] > 0
+
+    # Employee deletes their diagnostic data for the selected organization.
+    response = client.delete("/reports/me", headers=headers)
+
+    assert response.status_code == 200
+
+    # The report is derived from responses, so it should now be empty.
+    report = client.get("/reports/me", headers=headers)
+    assert report.status_code == 200
+    assert report.json()["answered"] == 0
+    assert report.json()["average_score"] is None
+    assert report.json()["risks"] == []
+def test_delete_only_removes_current_organization_data(client):
+    db = SessionLocal()
+
+    try:
+        ravi = db.query(models.User).filter_by(
+            email="ravi@consult.test"
+        ).one()
+
+        northwind = db.query(models.Organization).filter_by(
+            name="Northwind Logistics"
+        ).one()
+
+        bluepeak = db.query(models.Organization).filter_by(
+            name="Bluepeak Retail"
+        ).one()
+
+        northwind_membership = db.query(models.Membership).filter_by(
+            user_id=ravi.id,
+            org_id=northwind.id,
+        ).one()
+
+        bluepeak_membership = db.query(models.Membership).filter_by(
+            user_id=ravi.id,
+            org_id=bluepeak.id,
+        ).one()
+
+        # Save primitive IDs before closing the SQLAlchemy session.
+        northwind_membership_id = northwind_membership.id
+        bluepeak_membership_id = bluepeak_membership.id
+
+        db.add(
+            models.Response(
+                membership_id=northwind_membership_id,
+                question_id="common-freq",
+                answer="Daily",
+                score=4,
+                flags=[],
+            )
+        )
+
+        db.add(
+            models.Response(
+                membership_id=bluepeak_membership_id,
+                question_id="common-freq",
+                answer="Daily",
+                score=4,
+                flags=[],
+            )
+        )
+
+        db.commit()
+    finally:
+        db.close()
+
+    headers, _ = login(
+        client,
+        "ravi@consult.test",
+        "Northwind Logistics",
+    )
+
+    response = client.delete("/reports/me", headers=headers)
+
+    assert response.status_code == 200
+
+    db = SessionLocal()
+
+    try:
+        northwind_count = db.query(models.Response).filter_by(
+            membership_id=northwind_membership_id
+        ).count()
+
+        bluepeak_count = db.query(models.Response).filter_by(
+            membership_id=bluepeak_membership_id
+        ).count()
+    finally:
+        db.close()
+
+    assert northwind_count == 0
+    assert bluepeak_count == 1
