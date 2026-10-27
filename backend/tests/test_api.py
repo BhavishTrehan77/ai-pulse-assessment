@@ -277,3 +277,24 @@ def test_duplicate_question_ids_are_rejected(client):
     )
 
     assert r.status_code == 400
+
+def test_user_cannot_select_organization_they_do_not_belong_to(client):
+    db = SessionLocal()
+
+    try:
+        bluepeak = db.query(models.Organization).filter_by(
+            name="Bluepeak Retail"
+        ).one()
+        bluepeak_id = bluepeak.id
+    finally:
+        db.close()
+
+    headers, _ = login(client, "priya@northwind.test")
+
+    r = client.post(
+        "/auth/select-org",
+        headers=headers,
+        json={"org_id": bluepeak_id},
+    )
+
+    assert r.status_code == 403
