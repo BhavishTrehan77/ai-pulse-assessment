@@ -60,3 +60,12 @@ LLM_MODEL = os.getenv(
 )
 
 TOKEN_HOURS = 12
+
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173",
+    ).split(",")
+    if origin.strip()
+]
