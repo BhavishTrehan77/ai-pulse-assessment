@@ -35,20 +35,34 @@ def org_dashboard(org_id: int, m: models.Membership = Depends(current_membership
     members = db.query(models.Membership).filter_by(org_id=org_id).all()
     departments = []
     all_flags = {}
+
     for dept in org.departments:
         dept_members = [x for x in members if x.department_id == dept.id]
+
         scores = []
         responded = 0
+        dept_flags = {}
+
         for dm in dept_members:
             rows = db.query(models.Response).filter_by(membership_id=dm.id).all()
+
             if rows:
                 responded += 1
+
             for r in rows:
                 if r.score is not None:
                     scores.append(r.score)
+
                 for f in r.flags or []:
-                    all_flags[f] = all_flags.get(f, 0) + 1
-        avg = sum(scores) / len(dept_members) if dept_members else None
+                    dept_flags[f] = dept_flags.get(f, 0) + 1
+
+        # Privacy rule: departments with fewer than 5
+        # completed diagnostics are not exposed.
+        if responded < 5:
+            continue
+
+        avg = sum(scores) / len(scores) if scores else None
+
         departments.append({
             "department": dept.name,
             "employees": len(dept_members),
@@ -56,6 +70,10 @@ def org_dashboard(org_id: int, m: models.Membership = Depends(current_membership
             "average_score": round(avg, 2) if avg is not None else None,
             "level": level_for(avg),
         })
+
+        # Only privacy-safe departments contribute risks.
+        for flag, count in dept_flags.items():
+            all_flags[flag] = all_flags.get(flag, 0) + count
 
     return {
         "organization": org.name,
