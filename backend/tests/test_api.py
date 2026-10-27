@@ -230,3 +230,50 @@ def test_delete_only_removes_current_organization_data(client):
 
     assert northwind_count == 0
     assert bluepeak_count == 1
+
+def test_employee_cannot_submit_question_outside_assigned_diagnostic(client):
+    headers, _ = login(
+        client,
+        "priya@northwind.test",
+        "Northwind Logistics",
+    )
+
+    r = client.post(
+        "/diagnostic/submit",
+        headers=headers,
+        json={
+            "answers": [
+                {
+                    "question_id": "mgr-policy",
+                    "answer": "No",
+                }
+            ]
+        },
+    )
+
+    assert r.status_code == 400
+def test_duplicate_question_ids_are_rejected(client):
+    headers, _ = login(
+        client,
+        "priya@northwind.test",
+        "Northwind Logistics",
+    )
+
+    r = client.post(
+        "/diagnostic/submit",
+        headers=headers,
+        json={
+            "answers": [
+                {
+                    "question_id": "common-freq",
+                    "answer": "Daily",
+                },
+                {
+                    "question_id": "common-freq",
+                    "answer": "Never",
+                },
+            ]
+        },
+    )
+
+    assert r.status_code == 400

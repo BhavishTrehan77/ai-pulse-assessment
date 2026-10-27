@@ -33,23 +33,72 @@ def get_questions(m: models.Membership = Depends(current_membership)):
 
 
 @router.post("/submit")
-def submit(body: SubmitIn, m: models.Membership = Depends(current_membership), db: Session = Depends(get_db)):
-    bank = {q["id"]: q for q in load_questions()}
+def submit(
+    body: SubmitIn,
+    m: models.Membership = Depends(current_membership),
+    db: Session = Depends(get_db),
+):
+    # Only questions assigned to this employee are valid.
+    allowed_questions = questions_for(m.job_role, m.seniority)
+    bank = {q["id"]: q for q in allowed_questions}
+
+    # Reject duplicate question IDs before creating any responses.
+    seen = set()
+
     for a in body.answers:
+        if a.question_id in seen:
+            raise HTTPException(
+                400,
+                f"Duplicate question {a.question_id}",
+            )
+
+        seen.add(a.question_id)
+
         q = bank.get(a.question_id)
+
         if not q:
-            raise HTTPException(400, f"Unknown question {a.question_id}")
-        resp = models.Response(membership_id=m.id, question_id=q["id"], answer=a.answer)
+            raise HTTPException(
+                400,
+                f"Question {a.question_id} is not assigned to this employee",
+            )
+
         if q["type"] == "mcq":
-            option = next((o for o in q["options"] if o["text"] == a.answer), None)
+            option = next(
+                (o for o in q["options"] if o["text"] == a.answer),
+                None,
+            )
+
             if option is None:
-                raise HTTPException(400, f"Invalid option for {q['id']}")
+                raise HTTPException(
+                    400,
+                    f"Invalid option for {q['id']}",
+                )
+
+    # All structural/authorization validation passed.
+    # Now create the responses.
+    for a in body.answers:
+        q = bank[a.question_id]
+
+        resp = models.Response(
+            membership_id=m.id,
+            question_id=q["id"],
+            answer=a.answer,
+        )
+
+        if q["type"] == "mcq":
+            option = next(
+                o for o in q["options"]
+                if o["text"] == a.answer
+            )
             resp.score = option["points"]
         else:
             result = score_open_answer(q["text"], a.answer)
             resp.score = result["score"]
             resp.reason = result["reason"]
             resp.flags = result["flags"]
+
         db.add(resp)
+
     db.commit()
+
     return {"saved": len(body.answers)}
