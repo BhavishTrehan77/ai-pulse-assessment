@@ -92,7 +92,14 @@ def submit(
             )
             resp.score = option["points"]
         else:
-            result = score_open_answer(q["text"], a.answer)
+            try:
+                result = score_open_answer(q["text"], a.answer)
+            except ValueError as exc:
+                raise HTTPException(
+                    502,
+                    "AI scoring returned an invalid response",
+                ) from exc
+
             resp.score = result["score"]
             resp.reason = result["reason"]
             resp.flags = result["flags"]
