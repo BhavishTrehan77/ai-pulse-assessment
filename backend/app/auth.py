@@ -1,8 +1,10 @@
 import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import Depends, HTTPException, Header
+from pwdlib import PasswordHash
 from sqlalchemy.orm import Session
 
 from .config import SECRET_KEY, TOKEN_HOURS
@@ -10,12 +12,21 @@ from .db import get_db
 from . import models
 
 
+password_hash = PasswordHash.recommended()
+
+
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
+    return password_hash.hash(password)
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return hash_password(password) == hashed
+    # New passwords are stored using Argon2.
+    if hashed.startswith("$argon2"):
+        return password_hash.verify(password, hashed)
+
+    # Backward compatibility for existing SHA-256 hashes.
+    legacy_hash = hashlib.sha256(password.encode()).hexdigest()
+    return hmac.compare_digest(legacy_hash, hashed)
 
 
 def make_token(user_id: int, org_id: int | None = None) -> str:
@@ -31,12 +42,19 @@ def _decode(authorization: str | None):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing token")
     try:
-        return jwt.decode(authorization[7:], SECRET_KEY, algorithms=["HS256"])
+        return jwt.decode(
+            authorization[7:],
+            SECRET_KEY,
+            algorithms=["HS256"],
+        )
     except jwt.PyJWTError:
         raise HTTPException(401, "Invalid token")
 
 
-def current_user(authorization: str | None = Header(None), db: Session = Depends(get_db)) -> models.User:
+def current_user(
+    authorization: str | None = Header(None),
+    db: Session = Depends(get_db),
+) -> models.User:
     data = _decode(authorization)
     user = db.get(models.User, int(data["sub"]))
     if not user:
@@ -44,16 +62,25 @@ def current_user(authorization: str | None = Header(None), db: Session = Depends
     return user
 
 
-def current_membership(authorization: str | None = Header(None), db: Session = Depends(get_db)) -> models.Membership:
+def current_membership(
+    authorization: str | None = Header(None),
+    db: Session = Depends(get_db),
+) -> models.Membership:
     """The membership for the organization selected after login."""
     data = _decode(authorization)
     if not data.get("org"):
-        raise HTTPException(400, "Select an organization first")
+        raise HTTPException(400, "Select an organizationfirst")
+
     m = (
         db.query(models.Membership)
-        .filter_by(user_id=int(data["sub"]), org_id=data["org"])
+        .filter_by(
+            user_id=int(data["sub"]),
+            org_id=data["org"],
+        )
         .first()
     )
+
     if not m:
         raise HTTPException(403, "Not a member of this organization")
+
     return m

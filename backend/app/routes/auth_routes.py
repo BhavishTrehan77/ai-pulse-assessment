@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from .. import models
-from ..auth import verify_password, make_token, current_user
+from ..auth import (
+    verify_password,
+    hash_password,
+    make_token,
+    current_user,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -21,13 +26,29 @@ class SelectOrgIn(BaseModel):
 @router.post("/login")
 def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.query(models.User).filter_by(email=body.email).first()
+
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Wrong email or password")
+
+    # Upgrade legacy SHA-256 password hashes after successful login.
+    if not user.password_hash.startswith("$argon2"):
+        user.password_hash = hash_password(body.password)
+        db.commit()
+
     orgs = [
-        {"org_id": m.org_id, "org_name": m.org.name, "role": m.role}
+        {
+            "org_id": m.org_id,
+            "org_name": m.org.name,
+            "role": m.role,
+        }
         for m in user.memberships
     ]
-    return {"token": make_token(user.id), "name": user.name, "organizations": orgs}
+
+    return {
+        "token": make_token(user.id),
+        "name": user.name,
+        "organizations": orgs,
+    }
 
 
 @router.post("/select-org")
