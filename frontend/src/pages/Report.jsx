@@ -36,7 +36,9 @@ export default function Report() {
 
       setMessage("Your diagnostic data was deleted successfully.");
     } catch (error) {
-      setMessage(error.message || "Unable to delete your diagnostic data.");
+      setMessage(
+        error.message || "Unable to delete your diagnostic data."
+      );
     } finally {
       setDeleting(false);
     }
@@ -57,19 +59,40 @@ export default function Report() {
         {report.risks.length === 0 ? (
           <li>No risks recorded</li>
         ) : (
-          report.risks.map((r) => <li key={r}>{r}</li>)
+          report.risks.map((risk) => (
+            <li key={risk}>{risk}</li>
+          ))
+        )}
+      </ul>
+
+      <h3>Personal AI Action Plan</h3>
+      <ul>
+        {report.action_plan.length === 0 ? (
+          <li>No personalized actions right now.</li>
+        ) : (
+          report.action_plan.map((item) => (
+            <li key={item.risk}>
+              <strong>{item.title}</strong>
+              <br />
+              {item.action}
+            </li>
+          ))
         )}
       </ul>
 
       <h3>Next steps</h3>
       <ul>
-        {report.next_steps.map((s) => <li key={s}>{s}</li>)}
+        {report.next_steps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
       </ul>
 
       {message && <p>{message}</p>}
 
       <button onClick={handleDelete} disabled={deleting}>
-        {deleting ? "Deleting..." : "Delete my diagnostic data"}
+        {deleting
+          ? "Deleting..."
+          : "Delete my diagnostic data"}
       </button>
     </div>
   );
