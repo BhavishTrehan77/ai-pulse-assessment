@@ -28,9 +28,13 @@ PEOPLE_BLUEPEAK = [
 
 
 def run():
-    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+
+    if db.query(models.User).first():
+        print("Database already seeded. Skipping seed.")
+        db.close()
+        return
 
     def make_org(name, depts):
         org = models.Organization(name=name)
